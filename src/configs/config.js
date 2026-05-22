@@ -11,8 +11,13 @@ if (!process.env.JWT_SECRET) {
   process.exit(1);
 }
 
-if (!process.env.JWT_EXPIRES_IN) {
-  console.error("JWT_EXPIRES_IN is not defined in the environment variables");
+if (!process.env.ACCESS_JWT_EXPIRES_IN) {
+  console.error("ACCESS_JWT_EXPIRES_IN is not defined in the environment variables");
+  process.exit(1);
+}
+
+if (!process.env.REFRESH_JWT_EXPIRES_IN) {
+  console.error("REFRESH_JWT_EXPIRES_IN is not defined in the environment variables");
   process.exit(1);
 }
 
@@ -25,7 +30,8 @@ export const config ={
     PORT: process.env.PORT || 5000,
     MONGO_URI: process.env.MONGO_URI,
     JWT_SECRET: process.env.JWT_SECRET,
-    JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "1d",
+    ACCESS_JWT_EXPIRES_IN: process.env.ACCESS_JWT_EXPIRES_IN || "15m",
+    REFRESH_JWT_EXPIRES_IN: process.env.REFRESH_JWT_EXPIRES_IN || "7d",
     MODE: process.env.MODE
 }
 
