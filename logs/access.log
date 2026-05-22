@@ -1,0 +1,1 @@
+::1 - - [22/May/2026:12:13:31 +0000] "POST /api/auth/register HTTP/1.1" 400 61 "-" "PostmanRuntime/7.53.0"
