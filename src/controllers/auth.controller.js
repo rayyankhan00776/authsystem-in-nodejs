@@ -16,7 +16,7 @@ export async function register(req, res) {
         const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
 
         // generating a jwt token
-        const token = jwt.sign({ email }, config.JWT_SECRET, { expiresIn: config.JWT_EXPIRES_IN });
+        const token = jwt.sign({ id : newUser._id }, config.JWT_SECRET, { expiresIn: config.JWT_EXPIRES_IN });
 
         // Create a new user
         const newUser = new UserModel({ username, email, password: hashedPassword });
@@ -30,5 +30,46 @@ export async function register(req, res) {
     }
 }
 
+export async function getME(req, res) {
+    try {
+        const token = req.headers.authorization?.split(" ")[1];
 
-export default { register };
+        if (!token) {
+            return res.status(401).json({ message: "Unauthorized" });
+        }
+
+        const decoded = jwt.verify(token, config.JWT_SECRET);
+
+        // since you stored only email in token
+        const user = await UserModel.findOne(decoded.id );
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        return res.status(200).json({
+            message: "User found successfully",
+            user: {
+                username: user.username,
+                email: user.email,
+            },
+        });
+
+    } catch (error) {
+        console.error("Error in getME controller:", error);
+
+        // token errors (invalid/expired)
+        if (error.name === "JsonWebTokenError") {
+            return res.status(401).json({ message: "Invalid token" });
+        }
+
+        if (error.name === "TokenExpiredError") {
+            return res.status(401).json({ message: "Token expired" });
+        }
+
+        return res.status(500).json({ message: "Internal server error" });
+    }
+}
+
+
+export default { register, getME };
