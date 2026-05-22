@@ -1,0 +1,62 @@
+name: Auth API CI
+
+on:
+	push:
+	pull_request:
+
+permissions:
+	contents: read
+
+# Avoid wasting CI minutes by cancelling older runs on the same branch/PR.
+concurrency:
+	group: auth-ci-${{ github.ref }}
+	cancel-in-progress: true
+
+jobs:
+	test:
+		name: Tests (Node ${{ matrix.node }})
+		runs-on: ubuntu-latest
+
+		strategy:
+			fail-fast: false
+			matrix:
+				node: [20.x]
+
+		# MongoDB is required for this API. Tests will use this service via MONGO_URI.
+		services:
+			mongo:
+				image: mongo:7
+				ports:
+					- 27017:27017
+				options: >-
+					--health-cmd="mongosh --eval 'db.runCommand({ ping: 1 })'"
+					--health-interval=10s
+					--health-timeout=5s
+					--health-retries=10
+
+		# These env vars are validated by src/configs/config.js and are required for tests.
+		env:
+			NODE_ENV: test
+			MODE: test
+			JWT_SECRET: ci_test_jwt_secret
+			ACCESS_JWT_EXPIRES_IN: 15m
+			REFRESH_JWT_EXPIRES_IN: 7d
+			MONGO_URI: mongodb://127.0.0.1:27017/authsystem_test
+
+		steps:
+			- name: Checkout repository
+				uses: actions/checkout@v4
+
+			- name: Setup Node.js
+				uses: actions/setup-node@v4
+				with:
+					node-version: ${{ matrix.node }}
+					cache: npm
+					# No package-lock.json is committed yet, so hash package.json for caching.
+					cache-dependency-path: package.json
+
+			- name: Install dependencies
+				run: npm install --no-audit --no-fund
+
+			- name: Run integration tests
+				run: npm test
