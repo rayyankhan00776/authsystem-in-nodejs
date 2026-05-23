@@ -2,7 +2,6 @@ import UserModel from "../models/user.model.js";
 import jwt from "jsonwebtoken";
 import config from "../configs/config.js";
 import crypto from "crypto";
-import { decode } from "punycode";
 import sessionModel from "../models/session.model.js";
 
 export async function register(req, res) {
@@ -28,7 +27,7 @@ export async function register(req, res) {
             user: newUser._id,
             refreshTokenHash: refreshtokenHash,
             ip: req.ip,
-            userAgent: req.headers['user-agent']
+            userAgent: req.get('user-agent') || 'unknown'
         });
         await session.save();
         // generating a jwt token
@@ -76,7 +75,7 @@ export async function login(req, res) {
             user: user._id,
             refreshTokenHash: refreshtokenHash,
             ip: req.ip,
-            userAgent: req.headers['user-agent']
+            userAgent: req.get('user-agent') || 'unknown'
         });
         await session.save();
         // generating a jwt token
