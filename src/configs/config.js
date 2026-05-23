@@ -26,13 +26,13 @@ if (!process.env.MODE) {
   process.exit(1);
 }
 
-export const config ={
-    PORT: process.env.PORT || 5000,
-    MONGO_URI: process.env.MONGO_URI,
-    JWT_SECRET: process.env.JWT_SECRET,
-    ACCESS_JWT_EXPIRES_IN: process.env.ACCESS_JWT_EXPIRES_IN || "15m",
-    REFRESH_JWT_EXPIRES_IN: process.env.REFRESH_JWT_EXPIRES_IN || "7d",
-    MODE: process.env.MODE
+export const config = {
+  PORT: process.env.PORT || 3333,
+  MONGO_URI: process.env.MONGO_URI,
+  JWT_SECRET: process.env.JWT_SECRET,
+  ACCESS_JWT_EXPIRES_IN: process.env.ACCESS_JWT_EXPIRES_IN || "15m",
+  REFRESH_JWT_EXPIRES_IN: process.env.REFRESH_JWT_EXPIRES_IN || "7d",
+  MODE: process.env.MODE
 }
 
 export default config;

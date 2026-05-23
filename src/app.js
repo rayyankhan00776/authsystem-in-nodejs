@@ -12,4 +12,8 @@ app.use(fileLogger);
 
 app.use('/api/auth', authRouter);
 
+app.get('/', (req, res) => {
+    res.send('Welcome to the Auth System API');
+});
+
 export default app;
