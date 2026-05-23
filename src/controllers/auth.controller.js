@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import config from "../configs/config.js";
 import crypto from "crypto";
 import { decode } from "punycode";
+import sessionModel from "../models/session.model.js";
 
 export async function register(req, res) {
     try {
@@ -20,10 +21,18 @@ export async function register(req, res) {
         // Create a new user
         const newUser = new UserModel({ username, email, password: hashedPassword });
         await newUser.save();
-
-        // generating a jwt token
-        const accesstoken = jwt.sign({ id: newUser._id }, config.JWT_SECRET, { expiresIn: config.ACCESS_JWT_EXPIRES_IN });
         const refreshtoken = jwt.sign({ id: newUser._id }, config.JWT_SECRET, { expiresIn: config.REFRESH_JWT_EXPIRES_IN });
+        const refreshtokenHash = crypto.createHash('sha256').update(refreshtoken).digest('hex');
+        // Store the refresh token in the database
+        const session = new sessionModel({
+            user: newUser._id,
+            refreshTokenHash: refreshtokenHash,
+            ip: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+        await session.save();
+        // generating a jwt token
+        const accesstoken = jwt.sign({ id: newUser._id, sessionId: session._id }, config.JWT_SECRET, { expiresIn: config.ACCESS_JWT_EXPIRES_IN });
         res.cookie("refreshtoken", refreshtoken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
@@ -38,6 +47,51 @@ export async function register(req, res) {
 
     } catch (error) {
         console.error("Error in register controller:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+}
+
+export async function login(req, res) {
+    try {
+        const { email, password } = req.body;
+
+        // Hash the incoming password to compare with stored hash
+        const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
+
+        // Find the user by email
+        const user = await UserModel.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // Check if the hashed password matches
+        if (user.password !== hashedPassword) {
+            return res.status(401).json({ message: "Invalid credentials" });
+        }
+
+        const refreshtoken = jwt.sign({ id: user._id }, config.JWT_SECRET, { expiresIn: config.REFRESH_JWT_EXPIRES_IN });
+        const refreshtokenHash = crypto.createHash('sha256').update(refreshtoken).digest('hex');
+        // Store the refresh token in the database
+        const session = new sessionModel({
+            user: user._id,
+            refreshTokenHash: refreshtokenHash,
+            ip: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+        await session.save();
+        // generating a jwt token
+        const accesstoken = jwt.sign({ id: user._id, sessionId: session._id }, config.JWT_SECRET, { expiresIn: config.ACCESS_JWT_EXPIRES_IN });
+        res.cookie("refreshtoken", refreshtoken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "strict",
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+        });
+
+        res.status(200).json({ message: "Login successful", accesstoken });
+
+    } catch (error) {
+        console.error("Error in login controller:", error);
         res.status(500).json({ message: "Internal server error" });
     }
 }
@@ -93,6 +147,12 @@ export async function refreshToken(req, res) {
 
         const decoded = jwt.verify(refreshToken, config.JWT_SECRET);
 
+        const refreshtokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+        const session = await sessionModel.findOne({ refreshTokenHash: refreshtokenHash, revoked: false });
+        if (!session) {
+            return res.status(401).json({ message: "Invalid refresh token" });
+        }
+
         // since you stored only email in token
         const user = await UserModel.findById(decoded.id);
 
@@ -102,6 +162,11 @@ export async function refreshToken(req, res) {
 
         const newAccessToken = jwt.sign({ id: decoded.id }, config.JWT_SECRET, { expiresIn: config.ACCESS_JWT_EXPIRES_IN });
         const newRefreshtoken = jwt.sign({ id: decoded.id }, config.JWT_SECRET, { expiresIn: config.REFRESH_JWT_EXPIRES_IN });
+
+        const newRefreshtokenHash = crypto.createHash('sha256').update(newRefreshtoken).digest('hex');
+        session.refreshTokenHash = newRefreshtokenHash;
+        await session.save();
+
 
         res.cookie("refreshtoken", newRefreshtoken, {
             httpOnly: true,
@@ -130,4 +195,43 @@ export async function refreshToken(req, res) {
     }
 }
 
-export default { register, getME, refreshToken };
+export async function logout(req, res) {
+    try {
+        const refreshToken = req.cookies.refreshtoken;
+
+        if (!refreshToken) {
+            return res.status(401).json({ message: "No refresh token found" });
+        }
+        const refreshtokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+        const session = await sessionModel.findOne({ refreshTokenHash: refreshtokenHash, revoked: false });
+        if (!session) {
+            return res.status(401).json({ message: "Invalid refresh token" });
+        }
+        session.revoked = true;
+        await session.save();
+        res.clearCookie("refreshtoken");
+        return res.status(200).json({ message: "Logged out successfully" });
+    } catch (error) {
+        console.error("Error in logout controller:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+}
+
+export async function logoutAll(req, res) {
+    try {
+        const refreshToken = req.cookies.refreshtoken;
+
+        if (!refreshToken) {
+            return res.status(401).json({ message: "No refresh token found" });
+        }
+        const decoded = jwt.verify(refreshToken, config.JWT_SECRET);
+        await sessionModel.updateMany({ user: decoded.id, revoked: false }, { revoked: true });
+        res.clearCookie("refreshtoken");
+        return res.status(200).json({ message: "Logged out from all sessions successfully" });
+    } catch (error) {
+        console.error("Error in logoutAll controller:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+}
+
+export default { register, login, getME, refreshToken, logout, logoutAll };
