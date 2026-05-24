@@ -14,7 +14,10 @@ const accessLogStream = fs.createWriteStream(
 );
 
 // Save logs to file
-export const fileLogger = morgan("combined", {
+const fileLogFormat =
+  ':date[iso] :remote-addr :method :url :status :response-time ms - :res[content-length] ":user-agent"';
+
+export const fileLogger = morgan(fileLogFormat, {
   stream: accessLogStream,
 });
 

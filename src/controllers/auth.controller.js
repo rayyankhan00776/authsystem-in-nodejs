@@ -97,16 +97,13 @@ export async function login(req, res) {
 
 export async function getME(req, res) {
     try {
-        const token = req.headers.authorization?.split(" ")[1];
+        const userId = req.user?.id;
 
-        if (!token) {
+        if (!userId) {
             return res.status(401).json({ message: "Unauthorized" });
         }
 
-        const decoded = jwt.verify(token, config.JWT_SECRET);
-
-        // since you stored only email in token
-        const user = await UserModel.findById(decoded.id);
+        const user = await UserModel.findById(userId);
 
         if (!user) {
             return res.status(404).json({ message: "User not found" });
@@ -122,15 +119,6 @@ export async function getME(req, res) {
 
     } catch (error) {
         console.error("Error in getME controller:", error);
-
-        // token errors (invalid/expired)
-        if (error.name === "JsonWebTokenError") {
-            return res.status(401).json({ message: "Invalid token" });
-        }
-
-        if (error.name === "TokenExpiredError") {
-            return res.status(401).json({ message: "Token expired" });
-        }
 
         return res.status(500).json({ message: "Internal server error" });
     }
@@ -159,7 +147,7 @@ export async function refreshToken(req, res) {
             return res.status(404).json({ message: "User not found" });
         }
 
-        const newAccessToken = jwt.sign({ id: decoded.id }, config.JWT_SECRET, { expiresIn: config.ACCESS_JWT_EXPIRES_IN });
+        const newAccessToken = jwt.sign({ id: decoded.id, sessionId: session._id }, config.JWT_SECRET, { expiresIn: config.ACCESS_JWT_EXPIRES_IN });
         const newRefreshtoken = jwt.sign({ id: decoded.id }, config.JWT_SECRET, { expiresIn: config.REFRESH_JWT_EXPIRES_IN });
 
         const newRefreshtokenHash = crypto.createHash('sha256').update(newRefreshtoken).digest('hex');

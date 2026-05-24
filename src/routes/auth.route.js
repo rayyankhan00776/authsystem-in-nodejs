@@ -1,5 +1,6 @@
 import express from 'express';
 import { register, login, getME, refreshToken, logout, logoutAll } from '../controllers/auth.controller.js';
+import { authMiddleware } from "../middlewares/auth.middleware.js";
 
 const authRouter = express.Router();
 
@@ -16,7 +17,7 @@ authRouter.post('/login', login);
 /*
 * authRouter.get('/get-me',);
 */
-authRouter.get('/get-me', getME);
+authRouter.get('/get-me', authMiddleware, getME);
 
 /*
 * authRouter.get('/refresh-token', refreshToken);

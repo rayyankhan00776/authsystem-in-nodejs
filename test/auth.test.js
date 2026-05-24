@@ -6,6 +6,8 @@ import supertest from 'supertest';
 let app;
 let connectDB;
 let UserModel;
+let sessionModel;
+let MediaModel;
 let mongoMemoryServer;
 
 function ensureTestEnv() {
@@ -34,10 +36,14 @@ before(async () => {
 
     ({ default: app } = await import('../src/app.js'));
     ({ default: UserModel } = await import('../src/models/user.model.js'));
+    ({ default: sessionModel } = await import('../src/models/session.model.js'));
+    ({ default: MediaModel } = await import('../src/models/media.model.js'));
 });
 
 beforeEach(async () => {
     await UserModel.deleteMany({});
+    await sessionModel.deleteMany({});
+    await MediaModel.deleteMany({});
 });
 
 after(async () => {
@@ -108,6 +114,29 @@ test('GET /api/auth/get-me returns user info with a valid token', async () => {
     assert.equal(meRes.body?.user?.username, 'rayyan_me');
 });
 
+test('GET /api/auth/get-me returns 401 after logout revokes the session', async () => {
+    const agent = supertest.agent(app);
+
+    const registerRes = await agent.post('/api/auth/register').send({
+        username: 'rayyan_logout',
+        email: 'rayyan_logout@example.com',
+        password: 'Passw0rd1',
+    });
+
+    assert.equal(registerRes.status, 201);
+    const accessToken = registerRes.body?.accesstoken;
+    assert.ok(accessToken);
+
+    const logoutRes = await agent.get('/api/auth/logout');
+    assert.equal(logoutRes.status, 200);
+
+    const meRes = await agent
+        .get('/api/auth/get-me')
+        .set('Authorization', `Bearer ${accessToken}`);
+
+    assert.equal(meRes.status, 401);
+});
+
 test('GET /api/auth/refresh-token returns a new access token when cookie exists', async () => {
     const agent = supertest.agent(app);
 
@@ -126,6 +155,30 @@ test('GET /api/auth/refresh-token returns a new access token when cookie exists'
     assert.ok(refreshRes.body?.accesstoken);
 });
 
+test('GET /api/auth/refresh-token issues an access token that can access protected routes', async () => {
+    const agent = supertest.agent(app);
+
+    const registerRes = await agent.post('/api/auth/register').send({
+        username: 'rayyan_refresh_me',
+        email: 'rayyan_refresh_me@example.com',
+        password: 'Passw0rd1',
+    });
+
+    assert.equal(registerRes.status, 201);
+
+    const refreshRes = await agent.get('/api/auth/refresh-token');
+    assert.equal(refreshRes.status, 200);
+    const refreshedAccessToken = refreshRes.body?.accesstoken;
+    assert.ok(refreshedAccessToken);
+
+    const meRes = await agent
+        .get('/api/auth/get-me')
+        .set('Authorization', `Bearer ${refreshedAccessToken}`);
+
+    assert.equal(meRes.status, 200);
+    assert.equal(meRes.body?.user?.email, 'rayyan_refresh_me@example.com');
+});
+
 test('POST /api/auth/register rejects duplicate users', async () => {
     const agent = supertest.agent(app);
 
@@ -141,4 +194,74 @@ test('POST /api/auth/register rejects duplicate users', async () => {
     const second = await agent.post('/api/auth/register').send(payload);
     assert.equal(second.status, 400);
     assert.equal(second.body?.message, 'User with this email or username already exists');
+});
+
+test('Media endpoints: post/get/get-all/delete/delete-all (auth required)', async () => {
+    const agent = supertest.agent(app);
+
+    const registerRes = await agent.post('/api/auth/register').send({
+        username: 'rayyan_media',
+        email: 'rayyan_media@example.com',
+        password: 'Passw0rd1',
+    });
+
+    assert.equal(registerRes.status, 201);
+    const accessToken = registerRes.body?.accesstoken;
+    assert.ok(accessToken);
+
+    const user = await UserModel.findOne({ email: 'rayyan_media@example.com' });
+    assert.ok(user?._id);
+    const userId = user._id.toString();
+
+    // Create media
+    const createRes = await agent
+        .post('/api/media/post')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+            url: 'https://placehold.net/400x400.png',
+            mediaType: 'image'
+        });
+
+    assert.equal(createRes.status, 201);
+    assert.equal(createRes.body?.message, 'Media created successfully');
+    assert.ok(createRes.body?.media?._id);
+
+    const mediaId = createRes.body.media._id;
+
+    assert.equal(
+        createRes.body?.media?.public_id,
+        `Home/Gallery-app/${userId}/${mediaId}`
+    );
+
+    // Get all
+    const getAllRes = await agent
+        .get('/api/media/get-all')
+        .set('Authorization', `Bearer ${accessToken}`);
+
+    assert.equal(getAllRes.status, 200);
+    assert.equal(getAllRes.body?.count, 1);
+
+    // Get single
+    const getOneRes = await agent
+        .get(`/api/media/get/${mediaId}`)
+        .set('Authorization', `Bearer ${accessToken}`);
+
+    assert.equal(getOneRes.status, 200);
+    assert.equal(getOneRes.body?.media?.public_id, `Home/Gallery-app/${userId}/${mediaId}`);
+
+    // Delete single
+    const deleteOneRes = await agent
+        .delete(`/api/media/delete/${mediaId}`)
+        .set('Authorization', `Bearer ${accessToken}`);
+
+    assert.equal(deleteOneRes.status, 200);
+    assert.equal(deleteOneRes.body?.message, 'Media deleted successfully');
+
+    // Delete all (should be 0 now)
+    const deleteAllRes = await agent
+        .delete('/api/media/delete-all')
+        .set('Authorization', `Bearer ${accessToken}`);
+
+    assert.equal(deleteAllRes.status, 200);
+    assert.equal(deleteAllRes.body?.message, 'All media deleted successfully');
 });
