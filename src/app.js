@@ -14,7 +14,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/media', mediaRouter);
 
 app.get('/', (req, res) => {
-    res.send('Welcome to the Auth System API');
+    res.status(200).json({ message: 'Welcome to the Auth System API' });
 });
 
 export default app;
